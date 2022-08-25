@@ -30,7 +30,7 @@ public class NostrRelayListener
             _logger.LogInformation($" relay {_uri} status: {value} ");
             if (_status == value) return;
             _status = value;
-            StatusChanged.Invoke(this, EventArgs.Empty);
+            StatusChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -49,7 +49,7 @@ public class NostrRelayListener
         _nostrClient = new NostrClient(_uri);
         _nostrClient.NoticeReceived += NoticeReceived;
         _nostrClient.EventsReceived += EventsReceived;
-        _nostrClient.MessageReceived += (sender, s) => { _logger.LogInformation($"Relay {_uri} sent message: {s}"); };
+        // _nostrClient.MessageReceived += (sender, s) => { _logger.LogInformation($"Relay {_uri} sent message: {s}"); };
         _ = Task.Factory.StartNew(async () =>
         {
             while (!token.IsCancellationRequested)
@@ -59,7 +59,8 @@ public class NostrRelayListener
                 Status = RelayStatus.Connected;
                 foreach (var subscription in Subscriptions)
                 {
-                    _logger.LogInformation($" relay {_uri} subscribing {subscription.Key}");
+                    _logger.LogInformation($" relay {_uri} subscribing {subscription.Key}\n{JsonSerializer.Serialize(subscription.Value)}");
+                    
                     await _nostrClient.CreateSubscription(subscription.Key, subscription.Value, token);
                 }
 

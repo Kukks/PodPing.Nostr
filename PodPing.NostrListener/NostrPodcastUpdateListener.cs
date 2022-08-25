@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using NNostr.Client;
+using PodPing.Common;
 
 namespace PodPing.NostrListener;
 
@@ -12,25 +13,30 @@ public class NostrPodcastUpdateListener
 
     private readonly ConcurrentDictionary<string, string[]> whitelistContactResults = new();
     public readonly string[] WhitelistContacts;
+    private readonly int _contactListKind;
 
     public NostrPodcastUpdateListener(NostrRelayListener nostrRelayListener, string[] explicitWhitelist,
-        string[] whitelistContacts)
+        string[] whitelistContacts, int contactListKind = 3)
     {
         _nostrRelayListener = nostrRelayListener;
         ExplicitWhitelist = explicitWhitelist;
         WhitelistContacts = whitelistContacts;
+        _contactListKind = contactListKind;
     }
+
+    public EventHandler<NostrEvent[]> PodcastsUpdated;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await _nostrRelayListener.StartAsync(cancellationToken);
         _nostrRelayListener.EventsReceived += EventsReceived;
+        _nostrRelayListener.NoticeReceived += (sender, s) => Console.WriteLine($"NOTICE: {s}");
+        await _nostrRelayListener.StartAsync(cancellationToken);
         if (WhitelistContacts?.Any() is true)
         {
             var filter = new NostrSubscriptionFilter
             {
                 Authors = WhitelistContacts,
-                Kinds = new[] {3}
+                Kinds = new[] {_contactListKind}
             };
 
             await _nostrRelayListener.Subscribe("whitelist-contacts", new[] {filter});
@@ -51,10 +57,7 @@ public class NostrPodcastUpdateListener
         var filter = new NostrSubscriptionFilter
         {
             Authors = list.Any() || WhitelistContacts.Any() ? list : null,
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                {"#podcast", JsonSerializer.SerializeToElement(Array.Empty<string>())}
-            }
+            // Kinds = new []{BaseCLI.PodPingEvent}
         };
 
         await _nostrRelayListener.Subscribe("podcast-updates", new[] {filter});
@@ -67,6 +70,11 @@ public class NostrPodcastUpdateListener
             var newList = e.events.OrderByDescending(e => e.CreatedAt).DistinctBy(e => e.PublicKey)
                 .ToDictionary(e => e.PublicKey, e => e.GetTaggedData("p"));
             foreach (var i in newList) whitelistContactResults.AddOrUpdate(i.Key, s => i.Value, (_, _) => i.Value);
+        }
+
+        if (e.subscriptionId == "podcast-updates")
+        {
+            PodcastsUpdated.Invoke(this, e.events);
         }
     }
 }

@@ -1,40 +1,15 @@
-﻿using System.Reflection;
+﻿using System.Text.Json;
 using CommandLine;
 using NBitcoin.Secp256k1;
 using NetMQ;
 using NetMQ.Sockets;
 using NNostr.Client;
+using PodPing.Common;
 
 namespace PodPing.NostrWriter;
 
-public class NostrWriterCli
+public class NostrWriterCli : BaseCLI
 {
-    public static string PodPingPrefix = "PODPING";
-    public static int podpingEvent = 30500;
-
-    public async Task<int> ExecuteCli(string[] args)
-    {
-        args = AppendEnvironmentVariables(args);
-        var result = 0;
-        await Parser.Default.ParseArguments<WriteOptions, ServerOptions>(args)
-            .WithParsedAsync(async o =>
-            {
-                switch (o)
-                {
-                    case WriteOptions writeOptions:
-                        result = await Handle(writeOptions);
-                        break;
-                    case ServerOptions serverOptions:
-                        result = await Handle(serverOptions);
-                        break;
-                    default:
-                        result = 1;
-                        break;
-                }
-            });
-        return result;
-    }
-
     public async Task<int> Handle(WriteOptions opts)
     {
         var evt = await CreateEvent(opts.FeedUri, opts.PodcastGuid, opts.Reason, opts.Medium, opts.PrivateKey,
@@ -50,6 +25,7 @@ public class NostrWriterCli
     public async Task<int> Handle(ServerOptions opts)
     {
         using var client = new NostrClient(new Uri(opts.NostrRelay));
+        
         await client.ConnectAndWaitUntilConnected();
 
         using var server = new ResponseSocket();
@@ -62,10 +38,7 @@ public class NostrWriterCli
                 opts.PrivateKey, message.Length > 2 ? message[2] : null);
             await client.PublishEvent(evt);
         }
-
-        return 0;
     }
-
 
     private async Task<NostrEvent> CreateEvent(string iri, string? podcastGuid, string reason, string medium,
         ECPrivKey key,
@@ -73,8 +46,8 @@ public class NostrWriterCli
     {
         var evt = new NostrEvent
         {
-            Kind = podpingEvent,
-            Content = feedHash??"",
+            Kind = PodPingEvent,
+            Content = feedHash ?? "",
             PublicKey = key.CreateXOnlyPubKey().ToBytes().ToHex(),
             CreatedAt = DateTimeOffset.UtcNow,
             Tags = new List<NostrEventTag>
@@ -94,88 +67,49 @@ public class NostrWriterCli
                     {
                         iri
                     }
-                },
-                new()
-                {
-                    TagIdentifier = "medium",
-                    Data = new List<string>
-                    {
-                        medium
-                    }
-                },
-                new()
-                {
-                    TagIdentifier = "reason",
-                    Data = new List<string>
-                    {
-                        reason
-                    }
                 }
             }
         };
+        if (!string.IsNullOrEmpty(medium))
+        {
+            evt.Tags.Add(new()
+            {
+                TagIdentifier = "medium",
+                Data = new List<string>
+                {
+                    medium
+                }
+            });
+        }
+        if (!string.IsNullOrEmpty(reason))
+        {
+            evt.Tags.Add(new()
+            {
+                TagIdentifier = "reason",
+                Data = new List<string>
+                {
+                    reason
+                }
+            });
+        }
+        
         await evt.ComputeIdAndSign(key);
         return evt;
     }
 
-    private static string[] AppendEnvironmentVariables(string[] args)
+    public override async Task<int> ExecuteCliCore(string[] args)
     {
-        if (args.Length == 0) return args;
-
-        var verb = args[0];
-        if (!TryGetOptions(verb, out var options)) return args;
-
-        var newArgs = new List<string>(args);
-        foreach (var unusedOption in FilterOptions(args, options))
-        {
-            var value = Environment.GetEnvironmentVariable(
-                $"{PodPingPrefix}_{unusedOption.LongName.Replace("-", "_").ToUpperInvariant()}");
-            if (value != null) newArgs.Add($"--{unusedOption.LongName}={value}");
-        }
-
-        return newArgs.ToArray();
-    }
-
-    private static bool TryGetOptions(string verb, out OptionAttribute[] options)
-    {
-        foreach (var type in Assembly.GetExecutingAssembly().GetTypes().Where(type => !type.IsAbstract))
-        {
-            var verbAttribute = type.GetCustomAttributes<VerbAttribute>().FirstOrDefault();
-            if (verbAttribute != null)
-                if (verbAttribute.Name == verb)
+        var result = 0;
+        await Parser.Default.ParseArguments<WriteOptions, ServerOptions>(args)
+            .WithParsedAsync(async o =>
+            {
+                result = o switch
                 {
-                    options = type.GetProperties()
-                        .Select(property => property.GetCustomAttributes<OptionAttribute>().FirstOrDefault())
-                        .Where(option => option != null).ToArray();
-                    return true;
-                }
-        }
-
-        options = null;
-        return false;
-    }
-
-    private static OptionAttribute[] FilterOptions(string[] args, OptionAttribute[] options)
-    {
-        var usedLongNames = new HashSet<string>();
-        var usedShortNames = new HashSet<string>();
-
-        foreach (var arg in args)
-            if (arg.StartsWith("--"))
-            {
-                var longName = arg.Substring(2);
-                if (longName.Contains('=')) longName = longName.Substring(0, longName.IndexOf('='));
-
-                usedLongNames.Add(longName);
-            }
-            else if (arg.StartsWith("-"))
-            {
-                var shortName = arg.Substring(1);
-                if (shortName.Contains('=')) shortName = shortName.Substring(0, shortName.IndexOf('='));
-
-                usedShortNames.Add(shortName);
-            }
-
-        return options.Where(option =>
-            !usedLongNames.Contains(option.LongName) && !usedShortNames.Contains(option.ShortName)).ToArray();
+                    WriteOptions writeOptions => await Handle(writeOptions),
+                    ServerOptions serverOptions => await Handle(serverOptions),
+                    _ => 1
+                };
+            });
+        return result;
     }
 }
