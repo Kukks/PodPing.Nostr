@@ -57,7 +57,7 @@ public class NostrPodcastUpdateListener
         var filter = new NostrSubscriptionFilter
         {
             Authors = list.Any() || WhitelistContacts.Any() ? list : null,
-            // Kinds = new []{BaseCLI.PodPingEvent}
+            Kinds = new[] {BaseCLI.PodPingEvent}
         };
 
         await _nostrRelayListener.Subscribe("podcast-updates", new[] {filter});

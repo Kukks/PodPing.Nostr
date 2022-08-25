@@ -13,7 +13,12 @@
         <PackageReference Include="NBitcoin" Version="7.0.10" />
         <PackageReference Include="NBitcoin.Secp256k1" Version="3.0.1" />
         <PackageReference Include="NetMQ" Version="4.0.1.9" />
-        <PackageReference Include="NNostr.Client" Version="0.0.16" />
+        <PackageReference Include="NNostr.Client" Version="0.0.17" />
+        <PackageReference Include="System.Text.Json" Version="6.0.5" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\PodPing.Common\PodPing.Common.csproj" />
     </ItemGroup>
 
 </Project>

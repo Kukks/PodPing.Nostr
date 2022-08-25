@@ -16,9 +16,15 @@ public class NostrWriterCli : BaseCLI
             opts.FeedHash);
 
         using var client = new NostrClient(new Uri(opts.NostrRelay));
+        Console.WriteLine($"Connecting to {opts.NostrRelay}");
         client.MessageReceived += (sender, s) => Console.WriteLine(s);
         await client.ConnectAndWaitUntilConnected();
+        Console.WriteLine($"Connected to {opts.NostrRelay}");
+        
         await client.PublishEvent(evt);
+        
+        Console.WriteLine($"Publishing {JsonSerializer.Serialize(evt)}");
+        await Task.Delay(5000);
         return 0;
     }
 
